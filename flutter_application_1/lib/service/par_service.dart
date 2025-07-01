@@ -1,8 +1,8 @@
 
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:flutter_application_1/config/sso_config.dart';
-import 'package:flutter_application_1/service/pkce.dart';
 import 'package:http/http.dart' as http;
 class ParService {
   static Future<String> requestToken (String destination, String destinationLink, String token) async {
@@ -27,18 +27,50 @@ class ParService {
     }
   }
 
-  static startPar(String destination, String ssoToken) async {
-    // Generate PKCE code verifier and challenge
-    final pkce = Pkce();
-    final parUri = Uri.parse('$destination/par')
-        .replace(queryParameters: {
-      'client_id': SsoConfig.instance.clientId,
-      'sso_token': ssoToken,
-      'code_challenge': pkce.codeChallenge,
-      'code_challenge_method': 'S256',
-      'redirect_uri': 'http://localhost:8081/callback',
-      'state': DateTime.now().millisecondsSinceEpoch.toString(),
-    });
-    return parUri.toString();
+  static startPar(String ssoToken, String codeChallenge) async {
+
+    final response = await http.post(
+      Uri.parse('${SsoConfig.instance.ssoPortalUri}/par'),
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: json.encode({
+        'client_id': SsoConfig.instance.clientId,
+        'sso_token': ssoToken,
+        'code_challenge': codeChallenge,
+        'code_challenge_method': 'S256',
+        'redirect_uri': SsoConfig.instance.redirectUri,
+        'state': Random.secure().nextInt(1000000).toString(),
+      }),
+    );
+
+    if (response.statusCode == 200) {
+      final data = json.decode(response.body);
+      return data;
+    } else {
+      throw Exception('Failed to start PAR: ${response.reasonPhrase}');
+    }
   }
+  static Future<String> authorizePar(String requestUri) async {
+    final response = await http.post(
+      Uri.parse('${SsoConfig.instance.ssoPortalUri}/par/authorize'),
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: json.encode({
+        'request_uri': requestUri,
+      }),
+    );
+
+    if (response.statusCode == 200) {
+      final data = json.decode(response.body);
+      
+      return data['code'] as String;
+    } else {
+      throw Exception('Failed to authorize PAR: ${response.reasonPhrase}');
+    }
+  }
+
+
+
 }

@@ -8,6 +8,7 @@ import 'package:flutter_application_1/service/par_service.dart';
 import 'package:flutter_application_1/service/pkce.dart';
 import 'package:uni_links/uni_links.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class SsoLoginPage extends StatefulWidget {
   const SsoLoginPage({super.key});
@@ -20,6 +21,7 @@ class _SsoLoginPageState extends State<SsoLoginPage> {
   StreamSubscription? _sub;
   String? _token;
   Map<String, dynamic>? _jwtClaims;
+  Pkce? _pkce; 
   @override
   void initState() {
     super.initState();
@@ -28,25 +30,88 @@ class _SsoLoginPageState extends State<SsoLoginPage> {
 
   void _listentoRedirect() {
     _sub = uriLinkStream.listen((Uri? uri) async {
-      if (uri != null && uri.queryParameters.containsKey('code')) {
+      if (uri == null) return;
+      
+      final prefs = await SharedPreferences.getInstance();
+
+      // Handle the callback from the Auth login
+      if (uri.host == 'callback' && uri.queryParameters.containsKey('code')) {
         final code = uri.queryParameters['code'];
+
+        if (_pkce == null) {
+          final verifier = prefs.getString('code_verifier');
+          if (verifier != null){
+            _pkce = Pkce.restore(codeVerifier: verifier);
+          }else {
+            print("No PKCE code verifier found in SharedPreferences");
+            return;
+          }
+        }
+
         final token = await AuthService.exchangeCodeForToken(code!, _pkce!.codeVerifier);
         setState(() {
           _token = token;
           _jwtClaims = AuthService.readJWTClaims(token!);
         });
+
+        successfullyLoggedIn();
       }
-      
-    });
+
+      // Handle SSO callback
+      if (uri.host == 'sso' && uri.queryParameters.containsKey('sso_token')) {
+        final ssoToken = uri.queryParameters['sso_token'];
+        if (ssoToken == null) {
+          print("No SSO token found in the URI");
+          return;
+        }
+
+        _pkce = Pkce();
+        await prefs.setString('code_verifier', _pkce!.codeVerifier);
+        print("New PKCE initialized with code verifier: ${_pkce!.codeVerifier}");
+
+        final response = await ParService.startPar(ssoToken, _pkce!.codeChallenge);
+
+        String? authCode;
+        //check if the response is auth code or request uri
+        if (response['request_uri'] != null) {
+          final destinationLink = response['request_uri'];
+          authCode = await ParService.authorizePar(destinationLink);
+        } else if (response['authCode'] != null) {
+          authCode = response['authCode'];
+        }
+        if (authCode == null){
+          print("No auth code found in the response");
+          return;
+        }
+
+        //exchange token
+        final token = await AuthService.exchangeCodeForToken(authCode, _pkce!.codeVerifier);
+        setState(() {
+          _token = token;
+          _jwtClaims = AuthService.readJWTClaims(token!);
+        });
+
+        successfullyLoggedIn();
+
+
+    }});
   }
 
-  Pkce? _pkce;  
 
   void _startSsoLogin() async {
-    _pkce = Pkce();
+    final pkce = Pkce();
+
+    //save to SharedPreferences
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('code_verifier', pkce.codeVerifier);
+
+    setState(() {
+      _pkce = pkce;
+    });
+
     final ssoUri = Uri.parse('${SsoConfig.instance.ssoPortalUri}/authorize')
         .replace(queryParameters: {
-      'client_id': SsoConfig.instance.clientId,
+      'client_id': SsoConfig.instance.clientId, 
       'response_type': 'code',
       'redirect_uri': SsoConfig.instance.redirectUri,
       'scope': SsoConfig.instance.scope,
@@ -69,7 +134,6 @@ class _SsoLoginPageState extends State<SsoLoginPage> {
       token,
     );
 
-    _pkce = Pkce();
     final uri = Uri.parse(destinationLink);
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
@@ -82,6 +146,15 @@ class _SsoLoginPageState extends State<SsoLoginPage> {
   void dispose() { 
     _sub?.cancel();
     super.dispose();
+  }
+
+  void successfullyLoggedIn() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('code_verifier'); // Clear the code verifier after successful login
+    setState(() {
+      _pkce = null;
+    });
+
   }
 
   @override
