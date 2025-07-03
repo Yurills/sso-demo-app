@@ -151,9 +151,7 @@ class _SsoLoginPageState extends State<SsoLoginPage> {
   void successfullyLoggedIn() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('code_verifier'); // Clear the code verifier after successful login
-    setState(() {
-      _pkce = null;
-    });
+    
 
   }
 
