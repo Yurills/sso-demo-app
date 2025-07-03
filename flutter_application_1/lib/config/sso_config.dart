@@ -15,6 +15,6 @@ class SsoConfig {
         clientId: 'client-app-demo',
         redirectUri: 'myapp://callback',
         scope: 'openid profile email',
-        ssoPortalUri: 'http://localhost:8080/api/sso',
+        ssoPortalUri: 'https://localhost:8080/api/sso',
       );
 }

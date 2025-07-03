@@ -48,7 +48,7 @@ class _SsoLoginPageState extends State<SsoLoginPage> {
           }
         }
 
-        final token = await AuthService.exchangeCodeForToken(code!, _pkce!.codeVerifier);
+        final token = await AuthService.exchangeCodeForToken("authorization_code",code!, _pkce!.codeVerifier);
         setState(() {
           _token = token;
           _jwtClaims = AuthService.readJWTClaims(token!);
@@ -71,6 +71,18 @@ class _SsoLoginPageState extends State<SsoLoginPage> {
 
         final response = await ParService.startPar(ssoToken, _pkce!.codeChallenge);
 
+        //if session is active, will receive refresh token instead
+        if (response['token'] != null) {
+          final refreshToken = response['token'];
+          final token = await AuthService.exchangeCodeForToken("refresh_token", refreshToken, _pkce!.codeVerifier);
+          setState(() {
+            _token = token;
+            _jwtClaims = AuthService.readJWTClaims(token!);
+          });
+          successfullyLoggedIn();
+          return;
+        }
+
         String? authCode;
         //check if the response is auth code or request uri
         if (response['request_uri'] != null) {
@@ -85,7 +97,7 @@ class _SsoLoginPageState extends State<SsoLoginPage> {
         }
 
         //exchange token
-        final token = await AuthService.exchangeCodeForToken(authCode, _pkce!.codeVerifier);
+        final token = await AuthService.exchangeCodeForToken("authorization_code", authCode, _pkce!.codeVerifier);
         setState(() {
           _token = token;
           _jwtClaims = AuthService.readJWTClaims(token!);

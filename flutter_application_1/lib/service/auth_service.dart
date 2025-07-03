@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'package:flutter_application_1/config/sso_config.dart';
 import 'package:http/http.dart' as http;
 class AuthService {
-  static Future<String?> exchangeCodeForToken (String code, String codeVerifier) async {
+  static Future<String?> exchangeCodeForToken (String type, String code, String codeVerifier) async {
     final response = await http.post(
       Uri.parse('${SsoConfig.instance.ssoPortalUri}/token'),
       headers: {
@@ -11,7 +11,7 @@ class AuthService {
       },
       body: {
         'client_id': SsoConfig.instance.clientId,
-        'grant_type': 'authorization_code',
+        'grant_type': type,
         'code': code,
         "code_verifier": codeVerifier
       },
