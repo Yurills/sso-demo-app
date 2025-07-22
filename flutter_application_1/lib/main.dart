@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_application_1/sso_login_page.dart';
 
 void main() {
-  HttpOverrides.global = MyHttpOverrides();
+  HttpOverrides.global = MyHttpOverrides(); //overrides any https cert checks
   runApp(const MyApp());
 }
 
